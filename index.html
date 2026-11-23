@@ -34,6 +34,11 @@ dialog h2{margin:0 0 12px;font-size:18px;font-weight:500}
 dialog input[type=text],textarea{width:100%;border:1px solid #dadce0;border-radius:10px;padding:12px;margin-top:8px;font-size:15px}
 textarea{height:120px;resize:vertical}
 #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#202124;color:#fff;padding:12px 18px;border-radius:8px;font-size:14px;display:none;z-index:9}
+.f .t{display:block}
+[contenteditable=true]{background:rgba(255,255,255,.75);border-radius:6px;padding:4px 6px;outline:2px solid #1a73e8}
+.note{font-size:13px;margin:0 0 8px;color:#3c4043}.note:empty:before{content:attr(data-ph);color:#5f6368}
+.rm{border:0;background:transparent;color:#b3261e;font-size:12px;min-height:44px;padding:0}
+.row{flex-wrap:wrap;justify-content:flex-start;gap:0 6px}
 :focus-visible{outline:2px solid #1a73e8;outline-offset:2px}
 </style></head><body>
 <header>
@@ -56,19 +61,32 @@ textarea{height:120px;resize:vertical}
 <div id="toast" role="status"></div>
 <script>
 const KEY='rt_v1',$=s=>document.querySelector(s);
-const TYPES={rhyme:'Rhyme',alliteration:'Alliteration',simile:'Simile',repeat:'Repetition'};
+const T={rhyme:['Rhyme','Words that end with the same sound, like stay and away.'],
+internal:['Internal rhyme','Two words inside the same line that rhyme.'],
+alliteration:['Alliteration','Nearby words that start with the same sound.'],
+simile:['Simile','Compares two things using like or as.'],
+metaphor:['Metaphor','Says one thing is another, with no like or as. Could be a false hit if it is literal.'],
+repeat:['Repetition','A word repeated straight away for emphasis.'],
+anaphora:['Anaphora','Lines that start with the same word or words.'],
+epistrophe:['Epistrophe','Lines that end with the same word.'],
+hyperbole:['Hyperbole','Deliberate exaggeration for effect.'],
+personification:['Personification','Gives a human action to a thing or idea.'],
+oxymoron:['Oxymoron','Two opposite words joined together.'],
+antithesis:['Antithesis','Opposite ideas set against each other. Could be a false hit.'],
+onomatopoeia:['Onomatopoeia','A word that sounds like what it means.']};
 const COLORS=['#fff8b8','#e2f6d3','#d4e4ed','#fdcfe8','#f6e2dd','#efeff1'];
 let data=load(),filter='all',term='';
 function load(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){toast('Storage is full. Delete a card.')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(data,(k,v)=>k==='edit'?undefined:v))}catch(e){toast('Storage is full. Delete a card.')}}
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',3000)}
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clean=h=>h.replace(/<(?!\/?mark\b)[^>]*>/gi,'');
 const STOP=new Set('a an the and or but of to in on at is it i you he she we they my your me his her our their this that for with as be are was were am so do not no by from up if its'.split(' '));
 const WEAK=/^(ing|ed|er|es|ly|ion|ent|ant)$/;
 const words=s=>s.toLowerCase().match(/[a-z']+/g)||[];
 const RX=/^\[?(\d{1,4}[\/.\-]\d{1,2}[\/.\-]\d{1,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?\s?(?:[AaPp]\.?[Mm]\.?)?)\]?\s*(?:-\s*)?([^:]{1,60}?):\s(.*)$/;
 function parse(text){const msgs=[];
-text.replace(/[\u200e\u202f]/g,' ').split(/\r?\n/).forEach(l=>{const m=l.match(RX);
+text.replace(/[\u200e\u202f]/g,' ').replace(/[\u2018\u2019]/g,"'").split(/\r?\n/).forEach(l=>{const m=l.match(RX);
 if(m)msgs.push({who:m[3].trim(),t:m[4]});
 else if(msgs.length&&l.trim())msgs[msgs.length-1].t+='\n'+l;
 else if(l.trim())msgs.push({who:'',t:l})});
@@ -77,48 +95,78 @@ function rkey(w){w=w.replace(/'/g,'');if(w.length<3)return null;let tail='';
 if(/[^aeiouy]e$/.test(w)&&w.length>3){w=w.slice(0,-1);tail='e'}
 const m=w.match(/[aeiouy]+[^aeiouy]*$/);return m?m[0]+tail:null}
 function mk(t,marks){let i=-1;return t.split(/([A-Za-z']+)/).map(p=>/^[A-Za-z']+$/.test(p)?(++i,marks.has(i)?'<mark>'+esc(p)+'</mark>':esc(p)):esc(p)).join('')}
+function ex(l,s){const i=l.indexOf(s[0]),a=Math.max(0,i-70),b=Math.min(l.length,i+s[0].length+70);
+return esc((a?'\u2026':'')+l.slice(a,i))+'<mark>'+esc(s[0])+'</mark>'+esc(l.slice(i+s[0].length,b)+(b<l.length?'\u2026':''))}
 const clauses=t=>t.split(/[\n,;.!?\u2014]+|\s-\s/).map(s=>s.trim()).filter(s=>words(s).length>=2);
+const IMG='storm|fire|ocean|river|ghost|angel|devil|drug|poison|flame|moth|monster|queen|king|star|sun|moon|diamond|rose|thorn|wolf|lion|snake|cage|prison|war|battlefield|journey|puzzle|maze|mirror|shadow|wildfire|hurricane|weapon|gift|curse|disease|medicine|bridge|wall|anchor|magnet|melody|painting|garden|desert|sea|poem|song';
+const RXS=[['simile',/\b(like\s+(a|an)\s+[a-z']+|as\s+[a-z']+\s+as\s+(a|an|the)\s+[a-z']+)/i],
+['metaphor',new RegExp("(?:\\bis|\\bare|\\bwas|\\bwere|\\bam|'s|'re|'m)\\s+(?:a|an|the)\\s+(?:"+IMG+")\\b",'i')],
+['hyperbole',/\b(a million times|million times|thousand times|a million|a billion|forever and ever|takes forever|take forever|waited forever|waiting forever|never in my life|literally dying|literally dead|i'm dead|dying of|waited for ages|whole world)\b/i],
+['oxymoron',/\b(deafening silence|bitter ?sweet|living dead|open secret|civil war|jumbo shrimp|sweet sorrow|cruel kindness|silent scream|painfully beautiful|beautiful mess|hot mess|loud silence|pretty ugly|awfully good|alone together|old news|controlled chaos|sad smile|cold fire|seriously funny)\b/i],
+['personification',/\b(night|time|love|death|city|wind|sun|moon|heart|silence|rain|darkness|sky|life|fear|hope|pain|memory|memories|world|ocean|streets?)\s+(whispers?|dances?|knows?|sings?|cried|cries|laughs?|screams?|sleeps?|walks?|speaks?|calls?|watches?|hides?|waits?|swallows?|steals?|kisses|hugs?|haunts?|remembers?|forgets?|betrays?|breathes?)\b/i],
+['onomatopoeia',/\b(boom|bang|buzz|sizzle|splash|crash|thud|hiss|bam|vroom|tick|tock|honk|beep|zoom|thump|crackle|murmur|drip|splat|clang|woof|meow|oink|ding|whoosh|clatter|rumble|gurgle|growl)\b/i]];
+const PAIRS=['love|hate','day|night','hot|cold','light|dark','life|death','black|white','heaven|hell','rise|fall','give|take','win|lose','stay|leave','near|far','loud|quiet','young|old','rich|poor','truth|lie','joy|pain','strong|weak','together|alone'].map(p=>p.split('|'));
 function analyze(msgs){const out=[],seen=new Set();let prev=null;
 const add=(k,h)=>{if(!seen.has(h)){seen.add(h);out.push({k,h})}};
 const lw=c=>{const w=words(c);return[w[w.length-1],w.length-1]};
 const chk=(a,b)=>{const[x,i]=lw(a),[y,j]=lw(b);if(!x||!y||x===y||STOP.has(x)||STOP.has(y))return;
 const kx=rkey(x);if(kx&&kx===rkey(y)&&!WEAK.test(kx))add('rhyme',mk(a,new Set([i]))+' / '+mk(b,new Set([j])))};
+const ana=(a,b)=>{const wa=words(a),wb=words(b);if(wa.length<2||wb.length<2)return;
+if(wa[0]===wb[0]&&(wa[1]===wb[1]||(!STOP.has(wa[0])&&wa[0].length>=3))){const s=wa[1]===wb[1]?[0,1]:[0];add('anaphora',mk(a,new Set(s))+' / '+mk(b,new Set(s)))}
+const x=wa[wa.length-1],y=wb[wb.length-1];
+if(x===y&&!STOP.has(x)&&x.length>=3)add('epistrophe',mk(a,new Set([wa.length-1]))+' / '+mk(b,new Set([wb.length-1])))};
 msgs.forEach(m=>{const cl=clauses(m.t);
-for(let i=1;i<cl.length;i++)chk(cl[i-1],cl[i]);
-if(prev&&prev.length&&cl.length)chk(prev[prev.length-1],cl[0]);
+for(let i=1;i<cl.length;i++){chk(cl[i-1],cl[i]);ana(cl[i-1],cl[i])}
+if(prev&&prev.length&&cl.length){chk(prev[prev.length-1],cl[0]);ana(prev[prev.length-1],cl[0])}
 if(cl.length)prev=cl;
 cl.forEach(c=>{const w=words(c),keep=[];w.forEach((x,i)=>{if(!STOP.has(x)&&x.length>1)keep.push([x,i])});
 for(let s=0;s<keep.length;){let e=s+1;while(e<keep.length&&keep[e][0][0]===keep[s][0][0])e++;
 if(e-s>=3)add('alliteration',mk(c,new Set(keep.slice(s,e).map(k=>k[1]))));s=e}
-const r=c.match(/\b(\w{3,})(\s+\1\b)+/i);if(r)add('repeat',esc(c).replace(esc(r[0]),'<mark>'+esc(r[0])+'</mark>'))});
-m.t.split('\n').forEach(l=>{const s=l.match(/\b(like\s+(a|an)\s+[a-z']+|as\s+[a-z']+\s+as\s+(a|an|the)\s+[a-z']+)/i);
-if(s)add('simile',esc(l.trim()).replace(esc(s[0]),'<mark>'+esc(s[0])+'</mark>'))})});
-return out.slice(0,80)}
+const r=c.match(/\b(\w{3,})(\s+\1\b)+/i);if(r)add('repeat',esc(c).replace(esc(r[0]),()=>'<mark>'+esc(r[0])+'</mark>'));
+const ks=w.map(x=>STOP.has(x)||x.length<3?null:rkey(x));
+o:for(let p=0;p<w.length;p++)for(let q=p+1;q<w.length;q++)if(ks[p]&&ks[p]===ks[q]&&w[p]!==w[q]&&!WEAK.test(ks[p])){add('internal',mk(c,new Set([p,q])));break o}});
+m.t.split('\n').forEach(l=>{l=l.trim();if(!l)return;
+RXS.forEach(([k,re])=>{const s=l.match(re);if(s)add(k,ex(l,s))});
+const w=words(l);for(const[a,b]of PAIRS){const ia=w.indexOf(a),ib=w.indexOf(b);if(ia>=0&&ib>=0){add('antithesis',mk(l,new Set([ia,ib])));break}}})});
+return out.slice(0,120)}
+function recount(d){d.c={};d.f.forEach(x=>d.c[x.k]=(d.c[x.k]||0)+1)}
 function importText(text,name,src){const msgs=parse(text);
 if(!msgs.length){toast('No messages found in that text.');return}
-const f=analyze(msgs),c={};f.forEach(x=>c[x.k]=(c[x.k]||0)+1);
-const item={id:Date.now(),name:name||'Untitled chat',src,date:new Date().toLocaleDateString(),n:msgs.length,c,f};
-data=data.filter(d=>d.name!==item.name||d.src!==src);data.unshift(item);save();render();
+const f=analyze(msgs),item={id:Date.now(),name:name||'Untitled chat',src,date:new Date().toLocaleDateString(),n:msgs.length,c:{},f};
+recount(item);data=data.filter(d=>d.name!==item.name||d.src!==src);data.unshift(item);save();render();
 toast(f.length?'Found '+f.length+' items in '+msgs.length+' messages.':'No rhymes or devices found.')}
 const cleanName=n=>n.replace(/\.txt$/i,'').replace(/^WhatsApp Chat (with|-)\s*/i,'');
 function render(){
-$('#chips').innerHTML=[['all','All'],...Object.entries(TYPES)].map(([k,v])=>`<button class="chip" data-k="${k}" aria-pressed="${filter===k}">${v}</button>`).join('');
 const tot={};data.forEach(d=>Object.entries(d.c).forEach(([k,v])=>tot[k]=(tot[k]||0)+v));
-$('#sum').innerHTML=`<div><small>Rhymes</small><b>${tot.rhyme||0}</b></div><div><small>Other devices</small><b>${(tot.alliteration||0)+(tot.simile||0)+(tot.repeat||0)}</b></div><div><small>Chats</small><b>${data.length}</b></div>`;
+const ks=Object.keys(T).filter(k=>tot[k]);if(filter!=='all'&&!tot[filter])filter='all';
+$('#chips').innerHTML=[['all','All'],...ks.map(k=>[k,T[k][0]])].map(([k,v])=>`<button class="chip" data-k="${k}" aria-pressed="${filter===k}">${v}</button>`).join('');
+const other=Object.entries(tot).filter(([k])=>k!=='rhyme'&&k!=='internal').reduce((a,[,v])=>a+v,0);
+$('#sum').innerHTML=`<div><small>Rhymes</small><b>${(tot.rhyme||0)+(tot.internal||0)}</b></div><div><small>Other devices</small><b>${other}</b></div><div><small>Chats</small><b>${data.length}</b></div>`;
 const t=term.toLowerCase();
-const cards=data.map((d,i)=>{let f=d.f.filter(x=>filter==='all'||x.k===filter);
-if(t)f=f.filter(x=>d.name.toLowerCase().includes(t)||x.h.replace(/<[^>]+>/g,'').toLowerCase().includes(t));
-if(!f.length&&!(t&&d.name.toLowerCase().includes(t)&&filter==='all'))return'';
-const open=d.open,show=open?f:f.slice(0,3);
-return`<article class="card" style="background:${COLORS[i%COLORS.length]}"><div class="meta">${esc(d.src)} · ${d.date}</div><h3>${esc(d.name)}</h3>
-${show.map(x=>`<p class="f">${x.h}<small>${TYPES[x.k]}</small></p>`).join('')||'<p class="f">Nothing found in this chat.</p>'}
-<div class="tags">${Object.entries(d.c).map(([k,v])=>TYPES[k]+' ×'+v).join(' · ')}</div>
-<div class="row"><button data-more="${d.id}">${f.length>3?(open?'Show less':'Show all '+f.length):''}</button><button data-del="${d.id}" aria-label="Delete ${esc(d.name)}">Delete</button></div></article>`}).join('');
+const cards=data.map((d,i)=>{const nm=d.name.toLowerCase().includes(t);
+let f=d.f.map((x,j)=>[x,j]).filter(([x])=>filter==='all'||x.k===filter);
+if(t&&!nm)f=f.filter(([x])=>x.h.replace(/<[^>]+>/g,'').toLowerCase().includes(t));
+if(!f.length&&!d.edit&&!(t&&nm&&filter==='all'))return'';
+const ed=!!d.edit,ce=ed?' contenteditable="true"':'',show=(ed||d.open)?f:f.slice(0,3);
+return`<article class="card" data-id="${d.id}" style="background:${COLORS[i%COLORS.length]}"><div class="meta">${esc(d.src)} \u00b7 ${d.date}</div>
+<h3${ce}>${esc(d.name)}</h3>
+${show.map(([x,j])=>{const m=T[x.k]||[x.k,''];return`<div class="f"><span class="t" data-i="${j}"${ce}>${x.h}</span><small><b>${m[0]}:</b> ${m[1]}</small>${ed?`<button class="rm" data-rm="${j}">Remove this</button>`:''}</div>`}).join('')||'<p class="f">Nothing found in this chat.</p>'}
+${(d.note||ed)?`<div class="note" data-ph="Add a note"${ce}>${esc(d.note||'')}</div>`:''}
+<div class="tags">${Object.entries(d.c).map(([k,v])=>(T[k]?T[k][0]:k)+' \u00d7'+v).join(' \u00b7 ')}</div>
+<div class="row">${ed?'<button data-save="1">Save</button><button data-cancel="1">Cancel</button>':`${f.length>3?`<button data-more="1">${d.open?'Show less':'Show all '+f.length}</button>`:''}<button data-edit="1">Edit</button><button data-del="1" aria-label="Delete ${esc(d.name)}">Delete</button>`}</div></article>`}).join('');
 $('#grid').innerHTML=cards||`<div class="empty" style="column-span:all">${data.length?'No matches.':'Nothing here yet.<br>In WhatsApp, open a chat, tap Export chat, choose Without media, then share it to Rhyme Tracker. Or tap Import chat.'}</div>`}
+function collect(card,d){const h=card.querySelector('h3');if(h&&h.isContentEditable&&h.textContent.trim())d.name=h.textContent.trim();
+card.querySelectorAll('.t[data-i]').forEach(e=>{const i=+e.dataset.i;if(d.f[i]&&e.isContentEditable)d.f[i].h=clean(e.innerHTML)});
+const n=card.querySelector('.note');if(n&&n.isContentEditable)d.note=n.textContent.trim()}
 document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
-if(b.dataset.k){filter=b.dataset.k;render()}
-if(b.dataset.more){const d=data.find(x=>x.id==b.dataset.more);d.open=!d.open;render()}
-if(b.dataset.del){data=data.filter(x=>x.id!=b.dataset.del);save();render()}});
+if(b.dataset.k){filter=b.dataset.k;render();return}
+const card=b.closest('.card'),d=card&&data.find(x=>x.id==card.dataset.id);if(!d)return;
+if(b.dataset.more){d.open=!d.open;render()}
+if(b.dataset.edit){d.edit=true;render()}
+if(b.dataset.cancel){d.edit=false;render()}
+if(b.dataset.save){collect(card,d);d.edit=false;recount(d);save();render()}
+if(b.dataset.rm){collect(card,d);d.f.splice(+b.dataset.rm,1);recount(d);save();render()}
+if(b.dataset.del&&confirm('Delete this chat card?')){data=data.filter(x=>x!==d);save();render()}});
 $('#q').oninput=e=>{term=e.target.value;render()};
 $('#add').onclick=()=>$('#dlg').showModal();$('#x').onclick=()=>$('#dlg').close();
 $('#pick').onclick=()=>$('#file').click();
