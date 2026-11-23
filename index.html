@@ -39,13 +39,20 @@ textarea{height:120px;resize:vertical}
 .note{font-size:13px;margin:0 0 8px;color:#3c4043}.note:empty:before{content:attr(data-ph);color:#5f6368}
 .rm{border:0;background:transparent;color:#b3261e;font-size:12px;min-height:44px;padding:0}
 .row{flex-wrap:wrap;justify-content:flex-start;gap:0 6px}
+.top{display:flex;gap:8px;align-items:center}.search{flex:1;min-width:0}
+.ibtn{flex:none;width:52px;height:52px;border-radius:26px;border:0;background:#f1f3f4;box-shadow:0 1px 3px rgba(60,64,67,.25);display:flex;align-items:center;justify-content:center}
+dialog{max-height:88vh;overflow:auto}
+.pos{font-style:italic;color:#5f6368;margin:12px 0 2px}.def{margin:0 0 8px;line-height:1.5}.ex{color:#5f6368;font-size:13px;line-height:1.5}
+.lnk{border:0;background:none;color:#1a0dab;text-decoration:underline;font-size:13px;min-height:36px;padding:0 6px}
+.bk{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid #eee}
 :focus-visible{outline:2px solid #1a73e8;outline-offset:2px}
 </style></head><body>
 <header>
-<label class="search"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" type="search" placeholder="Search conversations" aria-label="Search conversations"></label>
+<div class="top"><label class="search"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><input id="q" type="search" placeholder="Search conversations" aria-label="Search conversations"></label><button class="ibtn" id="dict" aria-label="Dictionary"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5f6368" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg></button></div>
 <div class="chips" id="chips"></div>
 </header>
 <div class="sum" id="sum"></div>
+<p class="meta" style="margin:0 16px 10px">Tip: tap any word in a card to look it up.</p>
 <main class="grid" id="grid"></main>
 <button class="fab" id="add" aria-label="Import chat"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#202124" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Import chat</button>
 <dialog id="dlg">
@@ -57,6 +64,14 @@ textarea{height:120px;resize:vertical}
 <textarea id="tx" placeholder="Paste messages here" aria-label="Pasted messages"></textarea>
 <button class="btn alt" id="go">Analyze pasted text</button>
 <button class="btn alt" id="x">Cancel</button>
+</dialog>
+<dialog id="dd">
+<h2>Dictionary</h2>
+<div style="display:flex;gap:8px"><input type="search" id="dq" placeholder="Look up a word" aria-label="Look up a word" style="flex:1;min-width:0;border:1px solid #dadce0;border-radius:10px;padding:12px;font-size:16px"><button class="btn" id="dgo" style="width:auto;margin:0">Look up</button></div>
+<div id="dres" style="margin-top:12px"></div>
+<h2 style="margin-top:18px;font-size:16px">Saved words</h2>
+<div id="dbank"></div>
+<button class="btn alt" id="dx">Close</button>
 </dialog>
 <div id="toast" role="status"></div>
 <script>
@@ -178,6 +193,30 @@ async function checkShared(){if(!/shared=1/.test(location.search))return;
 try{const c=await caches.open('rt-share'),k=new URL('shared-latest',location.origin+location.pathname).href,r=await c.match(k);
 if(r){const name=decodeURIComponent(r.headers.get('X-Name')||'');importText(await r.text(),cleanName(name),/whatsapp/i.test(name)?'WhatsApp':'Shared');await c.delete(k)}}catch(e){}
 history.replaceState(null,'',location.pathname)}
+let bank=(()=>{try{return JSON.parse(localStorage.getItem('rt_words'))||[]}catch(e){return[]}})(),cur=null;
+function saveBank(){try{localStorage.setItem('rt_words',JSON.stringify(bank))}catch(e){toast('Storage is full.')}}
+function wordAt(x,y){let n,o;if(document.caretPositionFromPoint){const p=document.caretPositionFromPoint(x,y);if(p){n=p.offsetNode;o=p.offset}}else if(document.caretRangeFromPoint){const r=document.caretRangeFromPoint(x,y);if(r){n=r.startContainer;o=r.startOffset}}
+if(!n||n.nodeType!==3)return'';const s=n.textContent;let a=o,b=o;while(a>0&&/[A-Za-z']/.test(s[a-1]))a--;while(b<s.length&&/[A-Za-z']/.test(s[b]))b++;return s.slice(a,b).replace(/^'+|'+$/g,'')}
+function renderDef(){const out=$('#dres');if(!cur)return;const saved=bank.some(x=>x.w===cur.w);
+out.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><b style="font-size:22px">${esc(cur.w)}</b> <span class="meta">${esc(cur.ph)}</span></div><button class="chip" ${saved?'disabled':'data-savew="1"'}>${saved?'Saved':'Save word'}</button></div>`+cur.ms.map(m=>`<div class="pos">${esc(m.pos)}</div>`+m.defs.map(d=>`<p class="def">${esc(d.d)}${d.x?`<br><span class="ex">\u201c${esc(d.x)}\u201d</span>`:''}</p>`).join('')+(m.syn.length?`<div class="ex">Similar: ${m.syn.map(s=>`<button class="lnk" data-w="${esc(s)}">${esc(s)}</button>`).join(', ')}</div>`:'')).join('')}
+function renderBank(){$('#dbank').innerHTML=bank.length?bank.map(x=>`<div class="bk"><div><b>${esc(x.w)}</b> <span class="ex">${esc(x.ms[0]&&x.ms[0].defs[0]?x.ms[0].defs[0].d:'')}</span></div><div><button class="lnk" data-w="${esc(x.w)}">View</button><button class="lnk" data-rmw="${esc(x.w)}">Remove</button></div></div>`).join(''):'<p class="ex">No saved words yet.</p>'}
+async function lookup(w){w=w.trim().toLowerCase().replace(/[^a-z' -]/g,'');if(!w)return;
+$('#dq').value=w;renderBank();if(!$('#dd').open)$('#dd').showModal();
+const out=$('#dres');out.innerHTML='<p class="meta">Looking up\u2026</p>';cur=null;
+try{const r=await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/'+encodeURIComponent(w));
+if(r.status===404){out.innerHTML=`<p>No definition found for <b>${esc(w)}</b>. Check the spelling, or try the base form of the word.</p>`;return}
+if(!r.ok)throw 0;const e=(await r.json())[0];
+cur={w:e.word,ph:e.phonetic||((e.phonetics||[]).find(p=>p.text)||{}).text||'',ms:e.meanings.map(m=>({pos:m.partOfSpeech,defs:m.definitions.slice(0,2).map(d=>({d:d.definition,x:d.example||''})),syn:(m.synonyms||[]).slice(0,5)}))};
+renderDef()}catch(err){out.innerHTML='<p>Could not reach the dictionary. Check your internet connection and try again.</p>'}}
+document.addEventListener('click',e=>{const b=e.target.closest('button');
+if(b){if(b.dataset.w){lookup(b.dataset.w)}
+else if(b.dataset.rmw){bank=bank.filter(x=>x.w!==b.dataset.rmw);saveBank();renderBank();renderDef()}
+else if(b.dataset.savew&&cur){if(!bank.some(x=>x.w===cur.w)){bank.unshift(cur);saveBank()}renderBank();renderDef()}
+return}
+const t=e.target.closest('.t');if(!t||t.isContentEditable)return;const w=wordAt(e.clientX,e.clientY);if(w)lookup(w)});
+$('#dict').onclick=()=>{renderBank();renderDef();$('#dd').showModal()};
+$('#dgo').onclick=()=>lookup($('#dq').value);$('#dq').onkeydown=e=>{if(e.key==='Enter')lookup(e.target.value)};
+$('#dx').onclick=()=>$('#dd').close();
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 render();checkShared();
 </script></body></html>
